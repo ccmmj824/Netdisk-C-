@@ -88,3 +88,4 @@ void conf_init(char *path,char *ip,char*port,char *thread_num,char *capacity)
     line[strlen(line)-1]='\0';
     arg_set(line,capacity);
 }
+
