@@ -13,11 +13,14 @@
 #include<fcntl.h>//O_RDWR
 #include<dirent.h>
 #include<sys/stat.h>
+#include<sys/mman.h>
 #define ARGS_CHECK(argc,val) {if(argc!=val)  {printf("error args\n");return -1;}}
 #define ERROR_CHECK(ret,retval,funcname) {if(retval==ret){perror(funcname);return -1;}}
+
 void print_options();
 void split_cmd(char *cmd ,char *op,char *ob);
 int recvn(int sfd, void *pstart,int len);
+int tran_file(int sfd,char *filename);
 
 typedef struct{
     int data_len;//存储真正车厢上有多少数据

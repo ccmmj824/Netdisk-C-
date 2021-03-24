@@ -15,37 +15,59 @@ int main(int argc,char *argv[])
     printf("================= 连接到服务器 ================\n");
     printf("================= IP:%s ============\n",argv[1]);
     printf("================= 端口号:%s =================\n",argv[2]);
-    printf("please input ures name:");
+    int flag=-1;
     char name[20]={0};
+    char *passwd;
     char path[256]={0};
     int data_len=0;
-    scanf("%s",name);
-    //发送用户名
     train_t t;
-    bzero(&t,sizeof(train_t));
-    strcpy(t.buf,name);
-    t.data_len=strlen(t.buf);
-    ret=send(sfd,&t,4+t.data_len,MSG_NOSIGNAL);
-    ERROR_CHECK(ret,-1,"send_name");
-    print_options();//打印指示
-    //接收相对路径
+    do{
+        printf("please input ures name:");
+        scanf("%s",name);
+        passwd=getpass("passwd:");
+        //发送用户名
+        bzero(&t,sizeof(train_t));
+        strcpy(t.buf,name);
+        t.data_len=strlen(t.buf);
+        ret=send(sfd,&t,4+t.data_len,MSG_NOSIGNAL);
+        ERROR_CHECK(ret,-1,"send_name");
+        //发送密码
+        bzero(&t,sizeof(train_t));
+        strncpy(t.buf,passwd,strlen(passwd));
+        t.data_len=strlen(t.buf);
+        ret=send(sfd,&t,4+t.data_len,MSG_NOSIGNAL);
+        ERROR_CHECK(ret,-1,"send_passwd");
+        //接收flag
+        recv(sfd,&data_len,4,0);
+        recv(sfd,&flag,data_len,0);
+        if(flag==-1)
+        {
+            printf("ERROR!input again\n");
+        }
+    }while(flag==-1);
+    printf("登录成功：\n");
+    printf("当前路径：");
+    //接收绝对路径
     ret=recvn(sfd,&data_len,4);
     ERROR_CHECK(ret,-1,"recvn");
     ret=recvn(sfd,&path,data_len);
     ERROR_CHECK(ret,-1,"recvn");
-    printf("%s\n",path);
+    puts(path);
+    print_options();//打印指示
+    
     while(1)
     {
         //读取并分离命令 ”操作 对象“
         char cmd[256]={0};
         char op[16]={0};
         char ob[256]={0};
+        printf("----------><----------\n");
+        printf("%s\n",path);
+        printf("----------><----------\n");
         int ret=read(STDIN_FILENO,cmd,sizeof(cmd));
         ERROR_CHECK(ret,-1,"read");
         split_cmd(cmd,op,ob);
-        printf("!!!!!!!!!!\n");
-        
-        
+
         //发送“操作”
         train_t t;
         bzero(&t,sizeof(train_t));
@@ -59,20 +81,18 @@ int main(int argc,char *argv[])
         t.data_len=strlen(t.buf);
         ret=send(sfd,&t,4+t.data_len,MSG_NOSIGNAL);
         ERROR_CHECK(ret,-1,"send_ob");
-        
+
         if(strcmp(op,"cd")==0)
         {
             data_len=0;
             bzero(&path,sizeof(path));
             ret=recvn(sfd,&data_len,4);
             ERROR_CHECK(ret,-1,"recvn");
-            printf("%d\n",data_len);
             ret=recvn(sfd,path,data_len);
             ERROR_CHECK(ret,-1,"recvn");
-            printf("%s\n",path);
         }
-        
-        if(strcmp(op,"pwd")==0)
+
+        else if(strcmp(op,"pwd")==0)
         {
             data_len=0;
             bzero(&path,sizeof(path));
@@ -82,8 +102,8 @@ int main(int argc,char *argv[])
             ERROR_CHECK(ret,-1,"recvn");
             printf("%s\n",path);
         }
-        
-        if(strcmp(op,"ls")==0)
+
+        else if(strcmp(op,"ls")==0)
         {
             data_len=0;
             char buf[1014]={0};
@@ -100,61 +120,54 @@ int main(int argc,char *argv[])
         }
         //////////////////////
         //////下载文件///////
-        if(strcmp(op,"gets")==0)
+        else if(strcmp(op,"gets")==0)
         {
-            char buf[1000]={0};
             int data_len=0;
             off_t file_size=0;
+            int fd=open(ob,O_RDWR|O_CREAT,0666);
             //接受文件大小
+            ERROR_CHECK(fd,-1,"open");  
+            printf("%s %s",op,ob);
             int ret=recv(sfd,&data_len,4,0);
-            if (ret==-1)printf("recv g\n");
+            if (ret==-1) return -1;
             ret=recv(sfd,&file_size,data_len,0);
-            if(ret==-1)printf("recv gg\n");
-            printf("%ld\n",file_size);
-            //创建打开文件
-            int fd =open(ob,O_WRONLY|O_CREAT,0666);
-            if(fd==-1)printf("open gg\n");
-            while(1)
-            {
-                recv(sfd,&data_len,4,0);
-                if(data_len>0)
-                {
-                    recv(sfd,buf,data_len,0);
-                    write(fd,buf,data_len);
-                }else{
-                    break;
-                }
+            if(ret==-1) return -1;
+            printf("file_size=%ld\n",file_size);
+            //接收文件内容
+            time_t start,end;
+            start=time(NULL);
+            ftruncate(fd,file_size);
+            void *pstart=mmap(NULL,file_size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+            ERROR_CHECK(pstart,(void*)-1,"mmap");
+            ret=recvn(sfd,pstart,file_size);
+            if(ret==-1){
+                printf("recv gg\n");
+            }else{
+                end=time(NULL);
+                printf("100%% use time =%ld\n",end-start);
             }
+            munmap(pstart,file_size);
             close(fd);
         }
-        if(strcmp("puts",op)==0)
+        ///////////上传文件/////////////
+        else if(strcmp("puts",op)==0)
         {
             printf("start upload\n");
-            int fd=open(ob,O_RDONLY);
-            if(fd==-1)printf("open gg\n");
-            //发送文件大小
-            struct stat buf;
-            int ret=fstat(fd,&buf);
-            if(ret==-1)printf("ret gg\n");
-            t.data_len=sizeof(buf.st_size);
-            memcpy(t.buf,&buf.st_size,t.data_len);
-            ret = send (sfd,&t,4+t.data_len,0);
-            if(ret==-1)printf("send gg\n");
-            printf("befoe while\n");
-            //发送文件内容
-            while((t.data_len=read(fd,t.buf,sizeof(t.buf))))
-            {
-                printf("T.DATA-lEN=%d",t.data_len);
-                ret=send(sfd,&t,4+t.data_len,0);    
-                if(ret==-1)printf("send error\n");
-                printf("ret=%d",ret);
-            }
-            printf("after whiel\n");
-            ret=send(sfd,&t,4,0);
-            if(ret==-1)printf("send2 error\n");
-            printf(" i have send\n");
-            close(fd);
+            printf("path = %s\n",getcwd(NULL,0));
+            int ret=tran_file(sfd,ob);
+            if(ret==-1)printf("tran_file gg\n");
+            printf("Send %s Success\n",ob);
+        }else if(strcmp(op,"remove")==0){
+            printf("rm %s Success",ob);
+        }
+        else if(strcmp(op,"exit")==0)
+        {
+            break;
+        }
+        else{
+            printf("ERROR CMD，请重新输入\n");
         }
     }
+    close(sfd);
     return 0;
 }
