@@ -14,6 +14,9 @@
 #include<fcntl.h>
 #include<grp.h>
 #include<pwd.h>
+#include<shadow.h>
+#include<crypt.h>
+#include<sys/mman.h>//mmap
 #define ARGS_CHECK(argc,val) {if(argc!=val)  {printf("error args\n");return -1;}}
 #define ERROR_CHECK(ret,retval,funcname) {if(retval==ret){perror(funcname);return -1;}}
 
